@@ -1,0 +1,14 @@
+# Python
+*.pyc
+__pycache__
+
+# PyTorch
+*.pt
+*.pth
+
+# Images
+*.jpg
+*.png
+
+# Dev
+.vscode/
