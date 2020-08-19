@@ -2,8 +2,10 @@ import os
 import time
 import torch
 import logging
+from torchvision.utils import save_image
 
 logger = logging.getLogger('utils')
+
 
 def save_checkpoint(args, epoch, loss, model, optimizer, best=False):
     """Save a checkpoint for future use."""
@@ -16,7 +18,7 @@ def save_checkpoint(args, epoch, loss, model, optimizer, best=False):
     }
 
     if best:
-        name = f'{args.prefix}-best-{int(time.time())}.pt'
+        name = f'{args.prefix}-best-epoch-{epoch}-{int(time.time())}.pt'
     else:
         name = f'{args.prefix}-epoch-{epoch}-{int(time.time())}.pt'
 
@@ -53,3 +55,17 @@ def load_checkpoint(args):
         return checkpoint
     
     return None
+
+
+def save_images(args, outputs):
+    """Save a batch of images."""
+
+    if not os.path.isdir(args.save_dir):
+        os.makedirs(args.save_dir)
+
+    logger.info(f'Saving {len(outputs["name"])} images to {args.save_dir}')
+
+    for idx, name in enumerate(outputs['name']):
+        matte = outputs['pred_matte'][idx]
+        save_path = os.path.join(args.save_dir, name)
+        save_image(matte, save_path)

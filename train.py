@@ -40,13 +40,15 @@ def main(args):
     logger.info(args)
 
     model = SHMNet(args)
-    train_data = FlixStockDataset(args)
+    model.train()
+    train_data = FlixStockDataset(args, split='train')
     train_data_loader = DataLoader(train_data, batch_size=args.batch_size)
 
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
         lr=args.learning_rate, betas=(0.9, 0.999), weight_decay=1e-4)
     
     start_epoch = 1
+    losses = []
 
     # Load a previous checkpoint if exists
     checkpoint = load_checkpoint(args)
@@ -54,7 +56,7 @@ def main(args):
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
-        loss = checkpoint['loss']
+        losses = checkpoint['losses']
 
     # Start training 
     for epoch in range(start_epoch, args.num_epochs + 1):
@@ -72,8 +74,12 @@ def main(args):
             epoch_loss += loss.item()
             logger.info(f'Batch: {idx + 1}/{len(train_data_loader)} Loss: {epoch_loss / (idx + 1):8.3f}')
         
-        save_checkpoint(args, epoch, loss, model, optimizer)
-
+        average_loss = epoch_loss/(idx + 1)
+        losses.append(average_loss)
+        if min(losses) == average_loss:
+            save_checkpoint(args, epoch, loss, model, optimizer, best=True)
+        else:
+            save_checkpoint(args, epoch, loss, model, optimizer, best=False)            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train a Semantic Human Matting model.')
@@ -87,11 +93,11 @@ if __name__ == '__main__':
                         help='Path to directory containing checkpoints.')
     parser.add_argument('--prefix', type=str, default='shmnet',
                         help='Prefix to add before saving models')
-    parser.add_argument('--batch-size', type=int, default=10,
+    parser.add_argument('--batch-size', type=int, default=5,
                         help='input batch size for train')
     parser.add_argument('--num-epochs', type=int, default=10,
                         help='number of epochs to train for.')
-    parser.add_argument('--learning-rate', type=float, default=1e-3,
+    parser.add_argument('--learning-rate', type=float, default=1e-5,
                         help='learning rate while training.')
     parser.add_argument('--patch-size', type=int, default=80,
                         help='patch size of the input images.')
