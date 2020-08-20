@@ -1,44 +1,30 @@
+# Adapted from https://github.com/foamliu/Deep-Image-Matting-PyTorch/blob/master/models.py
+
 import torch
 import torch.nn as nn
 
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)  # sets device for model and PyTorch tensors
-im_size = 320
-
 
 class conv2DBatchNormRelu(nn.Module):
-    def __init__(
-        self,
-        in_channels,
-        n_filters,
-        k_size,
-        stride,
-        padding,
-        bias=True,
-        dilation=1,
-        with_bn=True,
-        with_relu=True,
-    ):
+    def __init__(self, in_channels, n_filters, k_size, stride,
+        padding, bias=True, dilation=1, with_bn=True, with_relu=True):
+
         super(conv2DBatchNormRelu, self).__init__()
 
-        conv_mod = nn.Conv2d(
-            int(in_channels),
-            int(n_filters),
-            kernel_size=k_size,
-            padding=padding,
-            stride=stride,
-            bias=bias,
-            dilation=dilation,
-        )
+        conv_mod = nn.Conv2d(int(in_channels), int(n_filters), kernel_size=k_size,
+            padding=padding, stride=stride, bias=bias, dilation=dilation)
 
         if with_bn:
             if with_relu:
                 self.cbr_unit = nn.Sequential(
-                    conv_mod, nn.BatchNorm2d(int(n_filters)), nn.ReLU(inplace=True)
+                    conv_mod,
+                    nn.BatchNorm2d(int(n_filters)),
+                    nn.ReLU(inplace=True)
                 )
             else:
-                self.cbr_unit = nn.Sequential(conv_mod, nn.BatchNorm2d(int(n_filters)))
+                self.cbr_unit = nn.Sequential(
+                    conv_mod, 
+                    nn.BatchNorm2d(int(n_filters))
+                )
         else:
             if with_relu:
                 self.cbr_unit = nn.Sequential(conv_mod, nn.ReLU(inplace=True))
@@ -53,12 +39,8 @@ class conv2DBatchNormRelu(nn.Module):
 class segnetDown2(nn.Module):
     def __init__(self, in_size, out_size):
         super(segnetDown2, self).__init__()
-        self.conv1 = conv2DBatchNormRelu(
-            in_size, out_size, k_size=3, stride=1, padding=1
-        )
-        self.conv2 = conv2DBatchNormRelu(
-            out_size, out_size, k_size=3, stride=1, padding=1
-        )
+        self.conv1 = conv2DBatchNormRelu(in_size, out_size, k_size=3, stride=1, padding=1)
+        self.conv2 = conv2DBatchNormRelu(out_size, out_size, k_size=3, stride=1, padding=1)
         self.maxpool_with_argmax = nn.MaxPool2d(2, 2, return_indices=True)
 
     def forward(self, inputs):
@@ -72,36 +54,32 @@ class segnetDown2(nn.Module):
 class segnetDown3(nn.Module):
     def __init__(self, in_size, out_size):
         super(segnetDown3, self).__init__()
-        self.conv1 = conv2DBatchNormRelu(
-            in_size, out_size, k_size=3, stride=1, padding=1
-        )
-        self.conv2 = conv2DBatchNormRelu(
-            out_size, out_size, k_size=3, stride=1, padding=1
-        )
-        self.conv3 = conv2DBatchNormRelu(
-            out_size, out_size, k_size=3, stride=1, padding=1
-        )
+        self.conv1 = conv2DBatchNormRelu(in_size, out_size, k_size=3, stride=1, padding=1)
+        self.conv2 = conv2DBatchNormRelu(out_size, out_size, k_size=3, stride=1, padding=1)
+        self.conv3 = conv2DBatchNormRelu(out_size, out_size, k_size=3, stride=1, padding=1)
         self.maxpool_with_argmax = nn.MaxPool2d(2, 2, return_indices=True)
 
-    def forward(self, inputs):
+    def forward(self, inputs, skip_maxpool=False):
         outputs = self.conv1(inputs)
         outputs = self.conv2(outputs)
         outputs = self.conv3(outputs)
         unpooled_shape = outputs.size()
-        outputs, indices = self.maxpool_with_argmax(outputs)
-        return outputs, indices, unpooled_shape
+        maxpool_outputs, indices = self.maxpool_with_argmax(outputs)
+        if skip_maxpool:
+            return outputs, indices, unpooled_shape
+        return maxpool_outputs, indices, unpooled_shape
 
 
 class segnetUp1(nn.Module):
     def __init__(self, in_size, out_size):
         super(segnetUp1, self).__init__()
         self.unpool = nn.MaxUnpool2d(2, 2)
-        self.conv = conv2DBatchNormRelu(
-            in_size, out_size, k_size=5, stride=1, padding=2, with_relu=False
-        )
+        self.conv = conv2DBatchNormRelu(in_size, out_size, k_size=5, stride=1, padding=2, with_relu=False)
 
-    def forward(self, inputs, indices, output_shape):
+    def forward(self, inputs, indices, output_shape, skip_unpool=False):
         outputs = self.unpool(input=inputs, indices=indices, output_size=output_shape)
+        if skip_unpool:
+            outputs = inputs
         outputs = self.conv(outputs)
         return outputs
 
@@ -140,9 +118,11 @@ class DIMNet(nn.Module):
         down2, indices_2, unpool_shape2 = self.down2(down1)
         down3, indices_3, unpool_shape3 = self.down3(down2)
         down4, indices_4, unpool_shape4 = self.down4(down3)
-        down5, indices_5, unpool_shape5 = self.down5(down4)
+        # down5, indices_5, unpool_shape5 = self.down5(down4)
+        down5, _, _ = self.down5(down4, skip_maxpool=True)
 
-        up5 = self.up5(down5, indices_5, unpool_shape5)
+        # up5 = self.up5(down5, indices_5, unpool_shape5)
+        up5 = self.up5(down5, indices_4, unpool_shape4, skip_unpool=True)
         up4 = self.up4(up5, indices_4, unpool_shape4)
         up3 = self.up3(up4, indices_3, unpool_shape3)
         up2 = self.up2(up3, indices_2, unpool_shape2)
@@ -167,7 +147,10 @@ class DIMNet(nn.Module):
         merged_layers = []
         for idx, conv_block in enumerate(blocks):
             if idx < 2:
-                units = [conv_block.conv1.cbr_unit, conv_block.conv2.cbr_unit]
+                units = [
+                    conv_block.conv1.cbr_unit, 
+                    conv_block.conv2.cbr_unit
+                ]
             else:
                 units = [
                     conv_block.conv1.cbr_unit,
@@ -183,10 +166,7 @@ class DIMNet(nn.Module):
 
         for l1, l2 in zip(vgg_layers, merged_layers):
             if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
-                if (
-                    l1.weight.size() == l2.weight.size()
-                    and l1.bias.size() == l2.bias.size()
-                ):
+                if (l1.weight.size() == l2.weight.size()
+                    and l1.bias.size() == l2.bias.size()):
                     l2.weight.data = l1.weight.data
                     l2.bias.data = l1.bias.data
-

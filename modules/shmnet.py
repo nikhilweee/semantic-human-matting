@@ -15,23 +15,32 @@ class SHMNet(nn.Module):
     
     def forward(self, batch):
         names = batch['name']
-        # (batch, patch_size, patch_size, RGB)
-        images = batch['image'].to(self.args.device)
         # (batch, RGB, patch_size, patch_size)
-        images = images.transpose(3, 1).float()
+        images = batch['image'].to(self.args.device)
 
         # T_Net outputs are softmaxed
-        # (batch, FUB, patch_size, patch_size)
+        # (batch, BUF, patch_size, patch_size)
         pred_trimaps = self.tnet(images)
-        _, unsure, foreground = torch.split(pred_trimaps, 1, dim=1)
+        pred_softmax = pred_trimaps.softmax(dim=1)
+        _, unsure, foreground = torch.split(pred_softmax, 1, dim=1)
+
+        # (batch, RGBBUF, patch_size, patch_size)
+        concat = torch.cat([images, pred_trimaps], dim=1)
 
         if self.training:
-            # Teacher forcing
-            # (batch, RGBFUB, patch_size, patch_size)
-            concat = torch.cat([images, gold_trimaps], dim=1)
-        else:
-            # (batch, RGBFUB, patch_size, patch_size)
-            concat = torch.cat([images, pred_trimaps], dim=1)
+            # (batch, 1, patch_size, patch_size)
+            gold_trimaps = batch['trimap'].to(self.args.device)
+
+            # Convert to BUF (BG, UNC, FG) classes.
+            gold_trimaps = gold_trimaps.repeat(1, 3, 1, 1)
+            gold_trimaps[:, 0, :, :] = gold_trimaps[:, 0, :, :].eq(0).float()
+            gold_trimaps[:, 1, :, :] = gold_trimaps[:, 1, :, :].eq(128).float()
+            gold_trimaps[:, 2, :, :] = gold_trimaps[:, 2, :, :].eq(255).float()
+
+            if self.args.mode != 'end_to_end':
+                # Teacher forcing
+                # (batch, RGBBUF, patch_size, patch_size)
+                concat = torch.cat([images, gold_trimaps], dim=1)
         
         # (batch, 1, patch_size, patch_size)
         alpha_r = self.mnet(concat)
@@ -47,18 +56,10 @@ class SHMNet(nn.Module):
         }
 
         if self.training:
-            gold_trimaps = batch['trimap'].to(self.args.device)
+
+            # (batch, RGB, patch_size, patch_size)
             gold_mattes = batch['matte'].to(self.args.device)
-
-            # Convert RGB channels to FUB (FG, UNC, BG) classes.
-            gold_trimaps[:, :, :, 0] = gold_trimaps[:, :, :, 0].eq(0)
-            gold_trimaps[:, :, :, 1] = gold_trimaps[:, :, :, 1].eq(128)
-            gold_trimaps[:, :, :, 2] = gold_trimaps[:, :, :, 2].eq(255)
-            # (batch, FUB, patch_size, patch_size)
-            gold_trimaps = gold_trimaps.transpose(3, 1).float()
-
             # Convert RGB channels in a matte to single channel.
-            gold_mattes = gold_mattes.transpose(3, 1).float()
             # (batch, 1, patch_size, patch_size)
             gold_mattes = gold_mattes.mean(dim=1, keepdim=True)
 

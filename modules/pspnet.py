@@ -1,3 +1,5 @@
+# Adapted from https://github.com/hszhao/semseg/blob/master/model/pspnet.py
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -24,24 +26,14 @@ class PPM(nn.Module):
         x_size = x.size()
         out = [x]
         for f in self.features:
-            out.append(
-                F.interpolate(f(x), x_size[2:], mode="bilinear", align_corners=True)
-            )
+            out.append(F.interpolate(f(x), x_size[2:], mode="bilinear", align_corners=True))
         return torch.cat(out, 1)
 
 
 class PSPNet(nn.Module):
-    def __init__(
-        self,
-        layers=50,
-        bins=(1, 2, 3, 6),
-        dropout=0.1,
-        classes=3,
-        zoom_factor=8,
-        use_ppm=True,
-        criterion=nn.CrossEntropyLoss(ignore_index=255),
-        pretrained=True,
-    ):
+    def __init__(self, layers=50, bins=(1, 2, 3, 6), dropout=0.1, classes=3, zoom_factor=8,
+        use_ppm=True, criterion=nn.CrossEntropyLoss(ignore_index=255), pretrained=True):
+
         super(PSPNet, self).__init__()
         assert layers in [50, 101, 152]
         assert 2048 % len(bins) == 0
@@ -57,6 +49,7 @@ class PSPNet(nn.Module):
             resnet = resnet101(pretrained=pretrained)
         else:
             resnet = resnet152(pretrained=pretrained)
+
         self.layer0 = nn.Sequential(
             resnet.conv1,
             resnet.bn1,
@@ -69,12 +62,11 @@ class PSPNet(nn.Module):
             resnet.relu,
             resnet.maxpool,
         )
-        self.layer1, self.layer2, self.layer3, self.layer4 = (
-            resnet.layer1,
-            resnet.layer2,
-            resnet.layer3,
-            resnet.layer4,
-        )
+        
+        self.layer1 = resnet.layer1
+        self.layer2 = resnet.layer2
+        self.layer3 = resnet.layer3
+        self.layer4 = resnet.layer4
 
         for n, m in self.layer3.named_modules():
             if "conv2" in n:
@@ -91,6 +83,7 @@ class PSPNet(nn.Module):
         if use_ppm:
             self.ppm = PPM(fea_dim, int(fea_dim / len(bins)), bins)
             fea_dim *= 2
+
         self.cls = nn.Sequential(
             nn.Conv2d(fea_dim, 512, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(512),
@@ -98,6 +91,7 @@ class PSPNet(nn.Module):
             nn.Dropout2d(p=dropout),
             nn.Conv2d(512, classes, kernel_size=1),
         )
+
         if self.training:
             self.aux = nn.Sequential(
                 nn.Conv2d(1024, 256, kernel_size=3, padding=1, bias=False),
@@ -138,23 +132,3 @@ class PSPNet(nn.Module):
         #     return x
 
         return x
-
-
-if __name__ == "__main__":
-    import os
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1"
-    input = torch.rand(4, 3, 473, 473).cuda()
-    model = PSPNet(
-        layers=50,
-        bins=(1, 2, 3, 6),
-        dropout=0.1,
-        classes=21,
-        zoom_factor=1,
-        use_ppm=True,
-        pretrained=True,
-    ).cuda()
-    model.eval()
-    print(model)
-    output = model(input)
-    print("PSPNet", output.size())

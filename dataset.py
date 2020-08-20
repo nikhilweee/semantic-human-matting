@@ -1,6 +1,12 @@
 import os
 import cv2
-from torch.utils.data import Dataset, DataLoader
+import logging
+import transforms
+from PIL import Image
+from torch.utils.data import Dataset
+
+logger = logging.getLogger('dataset')
+
 
 class FlixStockDataset(Dataset):
 
@@ -10,8 +16,10 @@ class FlixStockDataset(Dataset):
         self.matte_dir = args.matte_dir
         self.trimap_dir = args.trimap_dir
         self.patch_size = args.patch_size
+        self.mode = args.mode
         self.split = split
         self.files = []
+        self.create_transforms()
 
         for name in os.listdir(args.image_dir):
             self.files.append(name)
@@ -20,30 +28,58 @@ class FlixStockDataset(Dataset):
             self.files = self.files[:90]
         if split == 'test':
             self.files = self.files[:10]
+    
+    def create_transforms(self):
+
+        transforms_list = []
+
+        if self.mode == 'pretrain_tnet':
+            transforms_list.extend([
+                transforms.RandomCrop(400),
+                transforms.RandomRotation(180),
+                transforms.RandomHorizontalFlip()
+            ])
+        if self.mode == 'pretrain_mnet':
+            transforms_list.extend([
+                transforms.RandomCrop(320),
+            ])
+        if self.mode == 'end_to_end':
+            transforms_list.extend([
+                transforms.RandomCrop(800),
+            ])
+
+        transforms_list.extend([
+            transforms.Resize((self.patch_size, self.patch_size)),
+            transforms.ToTensor()
+        ])
+        
+        self.transforms = transforms.Compose(transforms_list)
+
 
     def __getitem__(self, index):
         file_name = self.files[index]
 
         image_path = os.path.join(self.image_dir, file_name)
-        image = cv2.imread(image_path)
-        image = cv2.resize(image, (self.patch_size, self.patch_size), interpolation=cv2.INTER_CUBIC)
+        image = Image.open(image_path)
 
-        instance = {
-            'name': file_name,
-            'image': image
-        }
+        instance = {'name': file_name}
 
         if self.split == 'train':
             trimap_path = os.path.join(self.trimap_dir, file_name).replace('.jpg', '.png')
-            trimap = cv2.imread(trimap_path)
-            trimap = cv2.resize(trimap, (self.patch_size, self.patch_size), interpolation=cv2.INTER_CUBIC)
-
             matte_path = os.path.join(self.matte_dir, file_name).replace('.jpg', '.png')
-            matte = cv2.imread(matte_path)
-            matte = cv2.resize(matte, (self.patch_size, self.patch_size), interpolation=cv2.INTER_CUBIC)
 
+            trimap = Image.open(trimap_path).convert('L')
+            matte = Image.open(matte_path).convert('L')
+
+            [image, trimap, matte] = self.transforms([image, trimap, matte])
+
+            instance['image'] = image
             instance['trimap'] = trimap
             instance['matte'] = matte
+
+        else:
+            [image] = self.transforms([image])
+            instance['image'] = image
 
         return instance
     

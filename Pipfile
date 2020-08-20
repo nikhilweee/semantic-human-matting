@@ -7,7 +7,6 @@ verify_ssl = true
 pudb = "*"
 
 [packages]
-opencv-python = "*"
 torch = "*"
 torchvision = "*"
 

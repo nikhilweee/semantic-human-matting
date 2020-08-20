@@ -1,3 +1,5 @@
+# Adapted from https://github.com/lizhengwei1992/Semantic_Human_Matting/blob/master/data/gen_trimap.py
+
 import cv2
 import numpy as np
 import argparse

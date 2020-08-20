@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format=logging_format)
 logger = logging.getLogger('train')
 
 
-def calculate_loss(outputs, eps=1e-6):
+def calculate_loss(args, outputs):
     image = outputs['image']                # (batch, RGB, patch_size, patch_size)
     pred_matte = outputs['pred_matte']      # (batch, 1, patch_size, patch_size)
     gold_matte = outputs['gold_matte']      # (batch, 1, patch_size, patch_size)
@@ -30,7 +30,13 @@ def calculate_loss(outputs, eps=1e-6):
     alpha_loss = torch.abs(gold_matte - pred_matte).mean()
     comp_loss = torch.abs(gold_comp - pred_comp).mean()
     class_loss = criterion(pred_trimap, gold_trimap)
-    loss = 0.5 * comp_loss + 0.5 * alpha_loss + 0.01 * class_loss
+
+    if args.mode == 'pretrain_tnet':
+        loss = class_loss
+    if args.mode == 'pretrain_mnet':
+        loss = 0.5 * comp_loss + 0.5 * alpha_loss
+    if args.mode == 'end_to_end':
+        loss = 0.5 * comp_loss + 0.5 * alpha_loss + 0.01 * class_loss
 
     return loss
 
@@ -60,26 +66,29 @@ def main(args):
 
     # Start training 
     for epoch in range(start_epoch, args.num_epochs + 1):
-        logger.info(f'Starting Epoch {epoch}/{args.num_epochs}')
+        logger.info(f'Epoch: {epoch}/{args.num_epochs}')
         epoch_loss = 0
 
         for idx, batch in enumerate(train_data_loader):
             outputs = model(batch)
-            loss = calculate_loss(outputs)
+            loss = calculate_loss(args, outputs)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             epoch_loss += loss.item()
-            logger.info(f'Batch: {idx + 1}/{len(train_data_loader)} Loss: {epoch_loss / (idx + 1):8.3f}')
+            logger.info(f'Batch: {idx + 1}/{len(train_data_loader)} \t'
+                        f'Loss: {epoch_loss / (idx + 1):8.5f}')
         
         average_loss = epoch_loss/(idx + 1)
         losses.append(average_loss)
         if min(losses) == average_loss:
-            save_checkpoint(args, epoch, loss, model, optimizer, best=True)
+            logger.info('Minimal loss so far.')
+            save_checkpoint(args, epoch, losses, model, optimizer, best=True)
         else:
-            save_checkpoint(args, epoch, loss, model, optimizer, best=False)            
+            save_checkpoint(args, epoch, losses, model, optimizer, best=False)            
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train a Semantic Human Matting model.')
@@ -93,15 +102,17 @@ if __name__ == '__main__':
                         help='Path to directory containing checkpoints.')
     parser.add_argument('--prefix', type=str, default='shmnet',
                         help='Prefix to add before saving models')
-    parser.add_argument('--batch-size', type=int, default=5,
+    parser.add_argument('--batch-size', type=int, default=10,
                         help='input batch size for train')
     parser.add_argument('--num-epochs', type=int, default=10,
                         help='number of epochs to train for.')
     parser.add_argument('--learning-rate', type=float, default=1e-5,
                         help='learning rate while training.')
     parser.add_argument('--patch-size', type=int, default=80,
-                        help='patch size of the input images.')
-    parser.add_argument('--device', type=str, choices=['cpu', 'cuda:0'], default='cuda:0',
+                        help='patch size of input images.')
+    parser.add_argument('--mode', type=str, choices=['end_to_end', 'pretrain_mnet', 'pretrain_tnet'],
+                        default='end_to_end', help='working mode.')
+    parser.add_argument('--device', type=str, choices=['cpu', 'cuda:0'], default='cpu',
                         help='device to use.')
 
     args = parser.parse_args()

@@ -7,12 +7,12 @@ from torchvision.utils import save_image
 logger = logging.getLogger('utils')
 
 
-def save_checkpoint(args, epoch, loss, model, optimizer, best=False):
-    """Save a checkpoint for future use."""
+def save_checkpoint(args, epoch, losses, model, optimizer, best=False):
+    """Save a checkpoint."""
 
     checkpoint = {
         'epoch': epoch,
-        'loss': loss,
+        'losses': losses,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict()
     }

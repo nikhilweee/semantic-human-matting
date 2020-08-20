@@ -54,8 +54,10 @@ if __name__ == '__main__':
     parser.add_argument('--prefix', type=str, default='shmnet',
                         help='Prefix to look for before loading models')
     parser.add_argument('--patch-size', type=int, default=200,
-                        help='patch size of the input images.')
-    parser.add_argument('--device', type=str, choices=['cpu', 'cuda:0'], default='cuda:0',
+                        help='patch size of input images.')
+    parser.add_argument('--mode', type=str, choices=['end_to_end', 'pretrain_mnet', 'pretrain_tnet'],
+                        default='end_to_end', help='working mode.')
+    parser.add_argument('--device', type=str, choices=['cpu', 'cuda:0'], default='cpu',
                         help='device to use.')
 
     args = parser.parse_args()
