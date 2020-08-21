@@ -6,7 +6,7 @@ import time
 from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from dataset import FlixStockDataset
+from dataset import SHMDataset
 from modules.shmnet import SHMNet
 from utils import load_checkpoint, save_checkpoint
 
@@ -47,7 +47,7 @@ def main(args):
 
     model = SHMNet(args)
     model.train()
-    train_data = FlixStockDataset(args, split='train')
+    train_data = SHMDataset(args, split='train')
     train_data_loader = DataLoader(train_data, batch_size=args.batch_size)
 
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),

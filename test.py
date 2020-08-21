@@ -5,7 +5,7 @@ import logging
 
 from torch import nn, optim
 from torch.utils.data import DataLoader
-from dataset import FlixStockDataset
+from dataset import SHMDataset
 from modules.shmnet import SHMNet
 from utils import load_checkpoint, save_images
 
@@ -21,7 +21,7 @@ def main(args):
 
     model = SHMNet(args)
     model.eval()
-    test_data = FlixStockDataset(args, split='test')
+    test_data = SHMDataset(args, split='test')
     test_data_loader = DataLoader(test_data, batch_size=args.batch_size)
 
     # Load a previous checkpoint if exists

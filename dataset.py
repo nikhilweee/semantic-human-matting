@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 logger = logging.getLogger('dataset')
 
 
-class FlixStockDataset(Dataset):
+class SHMDataset(Dataset):
 
     def __init__(self, args, split='train'):
         super().__init__()
