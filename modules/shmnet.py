@@ -32,13 +32,14 @@ class SHMNet(nn.Module):
             gold_trimaps = batch['trimap'].to(self.args.device)
 
             # Convert to BUF (BG, UNC, FG) classes.
-            gold_trimaps = gold_trimaps.repeat(1, 3, 1, 1)
+            gold_trimaps = gold_trimaps.repeat(1, 3, 1, 1) * 255
             gold_trimaps[:, 0, :, :] = gold_trimaps[:, 0, :, :].eq(0).float()
             gold_trimaps[:, 1, :, :] = gold_trimaps[:, 1, :, :].eq(128).float()
             gold_trimaps[:, 2, :, :] = gold_trimaps[:, 2, :, :].eq(255).float()
 
             if self.args.mode != 'end_to_end':
                 # Teacher forcing
+                _, unsure, foreground = torch.split(gold_trimaps, 1, dim=1)
                 # (batch, RGBBUF, patch_size, patch_size)
                 concat = torch.cat([images, gold_trimaps], dim=1)
         
